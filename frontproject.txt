@@ -1,0 +1,126 @@
+================================================================================
+ AI 와인 소믈리에 (React 프론트엔드) - 프로젝트 구성 문서
+================================================================================
+ 화면 참조 : D:\fastapiworkspace\fastapiproject  (Jinja2 + CSS + JS 화면)
+ API 서버  : D:\fastapiworkspace\reactbackend    (FastAPI JSON API, 8000번 포트)
+ 대상      : D:\fastapiworkspace\reactfrontend   (React + Vite, 3000번 포트)
+
+
+1. 프로젝트 개요
+--------------------------------------------------------------------------------
+ - fastapiproject의 3개 화면(홈, 와인 검색, 와인 챗봇)을 React로 옮기고
+   reactbackend의 REST API를 axios로 호출한다.
+ - 화면 이동은 react-router-dom, API 호출은 axios, 챗봇 답변(마크다운)은
+   react-markdown으로 표시한다.
+ - CSS는 fastapiproject의 style.css를 그대로 사용해 화면 모양이 같다.
+
+
+2. 화면과 API
+--------------------------------------------------------------------------------
+ 경로      화면             호출하는 API
+ --------  ---------------  ------------------------------------------------
+ /         홈               GET    /api/home
+ /search   와인 검색        GET    /api/search?query=&source_type=&k=&min_price=&max_price=&in_stock_only=
+ /chat     와인 챗봇        POST   /api/chat          {message} -> {answer, tools_used}
+                            GET    /api/chat/history  (첫 화면에서 대화 복원)
+                            DELETE /api/chat/history  ([새 대화])
+ *         404 안내 화면
+
+
+3. 폴더 구성
+--------------------------------------------------------------------------------
+ reactfrontend/
+  ├ index.html                   lang=ko, 제목 "AI 와인 소믈리에"
+  ├ vite.config.js               포트 3000, /api -> http://127.0.0.1:8000 프록시
+  ├ package.json
+  └ src/
+     ├ main.jsx                  BrowserRouter 적용
+     ├ App.jsx                   라우트 정의 (Layout 아래 홈/검색/챗봇/404)
+     ├ index.css                 fastapiproject style.css (전역 스타일)
+     ├ api/client.js             axios 인스턴스 + API 함수 + 오류 메시지 변환
+     ├ components/Layout.jsx     상단 메뉴(NavLink), Outlet
+     └ pages/
+        ├ HomePage.jsx           벡터 DB 상태, 기능 소개
+        ├ SearchPage.jsx         검색 폼, 결과 카드
+        ├ ChatPage.jsx           대화 화면
+        └ NotFoundPage.jsx
+
+
+4. 구현 내용
+--------------------------------------------------------------------------------
+ [api/client.js]
+   - axios.create({ baseURL: VITE_API_BASE ?? "", withCredentials: true, timeout: 90초 })
+     withCredentials가 없으면 쿠키(wine_thread_id)가 전달되지 않아 질문마다 새 대화가 된다.
+   - getErrorMessage : 서버 detail(문자열/422 배열), 429, 연결 실패를 한글 메시지로 변환.
+   - getHome, searchWines, sendChat, getChatHistory, clearChatHistory
+
+ [Layout.jsx]  NavLink가 현재 메뉴에 aria-current="page"를 붙여 CSS의 활성 메뉴 표시와 연결된다.
+               /chat 에서는 body에 page-chat 클래스를 붙여 대화 영역만 스크롤되게 한다.
+
+ [HomePage]    벡터 DB 준비 여부/건수 표시, 비어 있으면 안내 문구. 기능 카드는 Link로 이동.
+
+ [SearchPage]
+   - 검색 조건을 주소 쿼리스트링(?query=...)에 저장 -> 새로고침/링크 공유해도 같은 결과.
+   - 조건이 바뀌면 key로 화면을 새로 만들어 폼과 결과를 초기화한다.
+   - 검색어, 검색 대상, 결과 수(3/5/10), 최소/최대 가격(만원), 재고 체크박스.
+   - 결과 카드 : 이름, 빈티지, 지역, 가격, 재고, 한식 페어링, 테이스팅 노트, 유사도(%).
+   - 예시 검색어 4개, 결과 없음/오류(422, 503 등) 안내.
+
+ [ChatPage]
+   - 첫 화면에서 대화 기록 복원, [새 대화]로 삭제.
+   - 응답 대기 중 보내기/새 대화 버튼 비활성화, "답변 생성 중" 표시.
+   - Enter 전송, Shift+Enter 줄바꿈, 한글 조합 중(isComposing) Enter는 전송 안 함.
+   - 답변은 react-markdown으로 렌더링 (dangerouslySetInnerHTML, rehype-raw 미사용 -> XSS 방지).
+     링크는 새 탭(rel=noopener noreferrer)으로 연다.
+   - 사용한 도구(와인 DB 검색, YouTube 검색) 태그 표시, 예시 질문 4개.
+
+
+5. 실행 방법 (PowerShell, 터미널 2개)
+--------------------------------------------------------------------------------
+ [터미널 1 - 백엔드]
+   cd D:\fastapiworkspace\reactbackend\backend
+   ..\.venv\Scripts\activate
+   uvicorn main:app --reload            -> http://localhost:8000/docs
+
+ [터미널 2 - 프론트엔드]
+   cd D:\fastapiworkspace\reactfrontend
+   npm install                          (처음 한 번)
+   npm run dev                          -> http://localhost:3000 (브라우저 자동 실행)
+
+ 기타 : npm run build (배포용 빌드), npm run lint (코드 검사)
+
+ [주의]
+   - 백엔드를 다른 포트로 실행하면 vite.config.js의 proxy target도 같이 바꾼다.
+   - Vite 프록시를 쓰지 않고 직접 호출하려면 .env 에 VITE_API_BASE=http://localhost:8000
+     을 지정한다. 이때 React와 API의 호스트 이름(localhost / 127.0.0.1)을 맞춰야 쿠키가 전달된다.
+     reactbackend의 CORS_ORIGINS 기본값에 localhost:3000, 127.0.0.1:3000 이 포함되어 있다.
+
+
+6. 테스트 결과
+--------------------------------------------------------------------------------
+ 실제 백엔드(실제 OpenAI) + Vite 개발 서버 + 실제 Chrome(headless, puppeteer-core)으로 확인.
+
+ [프록시 경유 API]  홈 / 검색(가격·재고 필터) / 챗봇 질문 / 대화 조회 / 대화 삭제 / 422 오류   정상
+ [화면 동작 - 12개 항목 통과]
+   홈          벡터 DB 상태(60건) 표시
+   메뉴 이동   홈 -> 와인 검색 (SPA, 새로고침 없음)
+   검색        조건 입력 후 주소에 max_price, in_stock_only 반영, 카드 3개, 20만원 이하만 표시
+   새로고침    검색 조건과 결과 유지
+   오류        최소 가격 > 최대 가격 -> 서버의 422 메시지 표시
+   챗봇        예시 칩 4개, 전송 중 버튼 비활성화/로딩 표시, 마크다운 답변과 도구 태그 표시
+   대화 유지   새로고침 후 질문/답변 복원 (쿠키 전달 확인)
+   새 대화     대화 삭제 후 첫 화면으로 복귀
+   404         없는 주소에서 안내 화면 표시
+ [정적 검사]  npm run lint 오류 없음, npm run build 성공
+ ※ 브라우저 콘솔의 422 오류 2건은 위 "오류" 항목을 일부러 일으킨 것이다.
+
+ [확인하지 않은 항목]
+   · 모바일 화면 폭, Chrome 외 브라우저
+   · 한글 IME로 직접 입력할 때의 Enter 동작 (isComposing 처리는 코드만 반영)
+   · 운영 배포(HTTPS, 도메인)
+
+
+7. 사용 라이브러리
+--------------------------------------------------------------------------------
+ react / react-dom 19, react-router-dom, axios, react-markdown
+ 개발 : vite 8, @vitejs/plugin-react, eslint (+ react-hooks, react-refresh)
